@@ -1,0 +1,69 @@
+trigger:
+  branches:
+    include:
+      - master
+  paths:
+    include:
+      - terraform
+
+pool:
+  vmImage: "ubuntu-latest"
+variables:
+  - group: Azure
+
+parameters:
+  - name: terraform_action
+    displayName: Terraform Action
+    type: string
+    default: apply
+    values:
+      - apply
+      - destroy
+
+stages:
+  - stage: "Publish"
+    jobs:
+      - job: Publish
+        steps:
+          - task: PublishBuildArtifacts@1
+            displayName: "Publish Template"
+            inputs:
+              PathtoPublish: terraform
+              ArtifactName: Provision
+
+  - stage: Deploy
+    jobs:
+      - job: Deploy
+        steps:
+          - download: "current"
+            artifact: "Provision"
+          - task: TerraformInstaller@0
+            inputs:
+              terraformVersion: "latest"
+          - task: TerraformCLI@0
+            displayName: "Init"
+            inputs:
+              command: "init"
+              workingDirectory: "$(Pipeline.Workspace)/Provision/"
+              backendType: "azurerm"
+              backendServiceArm: "a-robinet-badlands-sp-azure-devops"
+              ensureBackend: true
+              backendAzureRmResourceGroupName: "rg-terraform-demo-southies"
+              backendAzureRmResourceGroupLocation: "eastus"
+              backendAzureRmStorageAccountName: "stterraformsouthies"
+              backendAzureRmContainerName: "terraform"
+              backendAzureRmKey: "DeployData0000.tfstate"
+              allowTelemetryCollection: false
+          - task: DownloadSecureFile@1
+            displayName: "Download secure file terraform.tfvars"
+            inputs:
+              secureFile: terraform.tfvars
+          - task: TerraformCLI@0
+            displayName: ${{parameters.terraform_action}}
+            inputs:
+              command: ${{parameters.terraform_action}}
+              workingDirectory: "$(Pipeline.Workspace)/Provision/"
+              environmentServiceName: "a-robinet-badlands-sp-azure-devops"
+              secureVarsFile: "terraform.tfvars"
+              commandOptions: "-refresh=true -auto-approve"
+              allowTelemetryCollection: false
